@@ -1,6 +1,6 @@
 # DLDO
-Author: Hongda Qiu
-The final project by Hongda Qiu for course 553.667: Deep Learning for Discrete Optimization by Prof.Cook, at Johns Hopkins University, 2020.
+Author: Hongda Qiu, Qiangang Fu, Jason Lenh, Zi Ye
+This is our final project for course 553.667: Deep Learning for Discrete Optimization by Prof.Cook, at Johns Hopkins University, 2020.
 
 Possible Plan TODO.
 
