@@ -251,12 +251,12 @@ def DeWeighted(G, T):
         for j in range(N):
           G[i][j] = tf.cast(G[i][j], tf.float32)
           G[i][j] = tf.reshape(G[i][j],[1])
-    a = 0
+
     Tb = G
     Tout = [[-1,-1,1.000]]
     for i in range(N):
         for j in  range(N):
-            Tb[i][j] = T[i][j] * G[i][j]
+            Tb[i][j] = T[i][j]*G[i][j]
             if type(G) != type(checker):
               judge = tf.cast(Tb[i][j] == 0, tf.bool)
               temp = [[i,j,tf.cast(G[i][j],tf.float32)]]
@@ -265,12 +265,12 @@ def DeWeighted(G, T):
               if Tb[i][j] != 0:
                 temp = [[i,j,G[i][j]]]
                 Tout.extend(temp)
+            #Tb[i][j] = G[i][j]
     Tout.pop(0)
     return Tout
 
 def Christofides(G, T):
-    print(G)
-    G_save = G
+    G_save = np.array(G)
     MSTree = DeWeighted(G,T)
     G = G_save
     # find odd vertexes
@@ -301,16 +301,16 @@ def Christofides(G, T):
             length += G[current][v]
             current = v
 
-    path.append(path[0])
-    print('Predicted Path', path)
-    print(G)
-    #print("Result path: ", path)
-    #print("Result length of the path: ", length)
+    #path.append(path[0])
+    #print('Predicted Path', path)
 
     return length
 
-def Christofides_pathoutput(G, T):
+def Christofides_debug(G, T, G_debug):
+
     MSTree = DeWeighted(G,T)
+    
+    G = G_debug
     # find odd vertexes
     odd_vertexes = find_odd_vertexes(MSTree)
     #print("Odd vertexes in MSTree: ", odd_vertexes)
@@ -340,11 +340,11 @@ def Christofides_pathoutput(G, T):
             current = v
 
     path.append(path[0])
-    print('path', path)
+    print('Predicted Path', path)
     #print("Result path: ", path)
     #print("Result length of the path: ", length)
 
-    return length
+    return length, path
 
 class UnionFind:
     def __init__(self):
@@ -580,9 +580,33 @@ def TreeGenerate(A):
   T = Prim(B)
   return T
 
+def MST_training(graph):
+    N = len(graph)
+    G = {}
+    for this in range(len(graph)):
+        for another_point in range(len(graph)):
+            if this != another_point:
+                if this not in G:
+                    G[this] = {}
+                G[this][another_point] = graph[this][another_point]
+    tree = []
+    subtrees = UnionFind_T()
+    for W, u, v in sorted((G[u][v], u, v) for u in G for v in G[u]):
+        if subtrees[u] != subtrees[v]:
+            tree.append([u, v, W])
+            subtrees.union(u, v)
+    A_t = np.zeros((N,N))
+    K = len(tree)
+    for k in range(K):
+        i = tree[k][0]
+        j = tree[k][1]
+        length = tree[k][2]
+        A_t[i][j] = length
+    return A_t
+
 # training hongda
 def training(G_set,L_set):
-  G_set_save = G_set
+  G_set_save = np.array(G_set)
   # X_train, Y_train
   # vectorize G to X_set
   N = int(G_set.shape[0])
@@ -594,16 +618,18 @@ def training(G_set,L_set):
   L_TC = np.zeros(N)
   for i in range(N):
     G = G_set[i,:,:]
-    L_TC[i] = tsp(G)
+    # L_TC[i] = tsp(G)
   X_train = np.zeros((N,D_x)) 
-  Y_train = L_set
+  Y_train = np.zeros((N,D_y)) 
   
   for i in range(N):
     X_train[i,:] = Vectorize(G_set[i,:,:], n)
+    Tree = MST_training(G_set[i,:,:])
+    Y_train[i,:] = Vectorize(Tree, n)
   # paramters
-  yita = 0.03
-  width = 32
-  epoch = 20
+  yita = 0.05
+  width = 64
+  epoch = 200
   batch_size = 1
   
  
@@ -639,7 +665,6 @@ def training(G_set,L_set):
   # the feedback of Neural Network 
   J = 0
   for i in range(batch_size):
-    #print(X[i,:])
     tempG = DeVectorize(tf.reshape(X[i,:],[-1,1]), n)
     tempLquita =  DeVectorize(tf.reshape(l_3[:,i],[-1,1]), n) # devectorize 
     tempL = DeVectorize(tf.reshape(Y[i,:],[-1,1]), n)
@@ -671,9 +696,9 @@ def training(G_set,L_set):
       Y_set  = np.zeros((batch_size,D_y))
       for index in range(batch_size):   
         # data 
-        picker = ep % N 
+        picker = np.random.randint(0,N)
         X_set[index,:] = X_train[picker,:]
-        Y_set[index] = Y_train[picker]
+        Y_set[index,:] = Y_train[picker,:]
       session.run(train, feed_dict = {X:X_set,Y:Y_set})
       tempV = session.run(J,feed_dict = {X:X_set,Y:Y_set})
       sum = sum + tempV
@@ -681,6 +706,7 @@ def training(G_set,L_set):
       value[ep] = sum/ep
     # test
     predicts = session.run(l_3,feed_dict = {X:X_train})
+    # path_pre = np.zeros((N,n+1))
     L_pre = np.zeros(N)
     for i in range(N):
       G = G_set[i,:,:]
@@ -688,8 +714,9 @@ def training(G_set,L_set):
       T = TreeGenerate(tempT)
       L_pre[i] = Christofides(G,T)
       OpRate = (L_pre[i]-L_set[i])/L_set[i]
-      print('case: ', i, 'DP', L_set[i], 'TC', L_TC[i], 'Learning Christofides', L_pre[i])
-
+      # print('case: ', i, 'DP', L_set[i], 'TC', L_TC[i], 'Learning Christofides', L_pre[i])
+      print('case: ', i, 'DP', L_set[i],
+       'Learning Christofides', L_pre[i], "OpRate", OpRate)
     # Plot
     t = range(epoch)
     plt.plot(t,value,label = "1")
@@ -729,8 +756,7 @@ def set_gen(n_case,n,max_size):
         cases[i,:,:]=random_adjmat(n,max_size)
     return cases
     
-G_set = set_gen(20,5,10)
-tsp(G_set[0,:,:])
+G_set = np.array(set_gen(50,20,20))
 L_set = GenerateTrainingData(G_set)
 
 training(G_set, L_set)
